@@ -71,6 +71,36 @@
 
 ## Jenkins 自动编译打包代码成Docker镜像
 
+### 软件安装
+
++ Jenkins安装
+
+  1）首先安装jdk、tomcat；然后下载jenkins war包放置到tomcat的webapps目录下然后启动tomcat；
+
+  2）输入/root/.jenkins/secrets/initialAdminPassword密码；
+
+  3）安装额外插件：SSH、Publish Over SSH、GIT Parameter、Maven Integration；
+
+  4）创建普通用户（默认有一个admin用户，密码是initialAdminPassword中的密码）；
+
++ git安装
++ maven安装
+
+### Jenkins配置
+
++ 全局工具配置
+  + JDK
+  + Git
+  + Maven
+
+### 项目创建&配置
+
+
+
+### 项目构建
+
+
+
 
 
 ## K8S编排系统启动
@@ -88,6 +118,8 @@
 + **安装kubeadm、kubelet、kubectl**
 
   [kubeadm](https://kubernetes.io/docs/reference/setup-tools/kubeadm/kubeadm/)是用于快速搭建K8S集群的工具。
+
+  
 
 + 
 
