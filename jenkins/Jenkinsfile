@@ -1,0 +1,42 @@
+pipeline {
+    agent none
+
+    //environment {
+    //}
+
+    stages {
+        stage('编译打包') {
+            agent {
+                docker {
+                    image 'maven:3-alpine'
+                    args '-v /root/.m2:/root/.m2'
+                }
+            }
+            steps {
+                sh 'echo 编译...'
+                sh 'mvn -pl jenkins-deploy-example -gs maven-settings.xml -DskipTests clean package'
+            }
+        }
+        stage('测试') {
+            agent any
+            steps {
+                sh 'echo 测试...'
+            }
+        }
+        stage('打包Docker镜像') {
+            agent any
+            steps {
+                sh 'echo 打包Docker镜像...'
+                sh 'docker build -t jenkins-deploy-example .'
+            }
+        }
+        stage('Swarm自动部署') {
+            agent any
+            steps {
+                sh 'echo Swarm自动部署...'
+                input id: 'Deploy2prod', message: '确定部署到生产环境？', ok: '部署', submitter: 'admin'
+                sh 'docker stack deploy -c docker-compose.yaml jenkins-deploy-example'
+            }
+        }
+    }
+}

@@ -1,0 +1,9 @@
+version: "3"
+services:
+  jenkins-deploy-example:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: jenkins-deploy-example
+    ports:
+      - "8081:8081"

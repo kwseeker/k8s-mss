@@ -65,7 +65,7 @@
   CentOS默认已经安装了，不需要再装。
   
   ```shell
-ps -ef | grep sshd	#可以看到sshd守护进程正在运行
+	ps -ef | grep sshd	#可以看到sshd守护进程正在运行
   ```
 
 + **必要软件**
