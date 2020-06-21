@@ -314,7 +314,7 @@ pipeline {
 
 ### Jenkins实现原理
 
-![](img/Jenkins工作原理.png)
+![](../img/Jenkins工作原理.png)
 
 + 如何监听代码更新的？
 
