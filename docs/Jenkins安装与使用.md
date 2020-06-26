@@ -178,5 +178,35 @@ pipeline {
 
 ## Jenkins构建docker镜像
 
+```
+stage('打包Docker镜像') {
+    agent any
+    steps {
+        sh 'echo 打包Docker镜像...'
+        sh 'docker build -t jenkins-deploy-example .'
+    }
+}
+```
+
 ## Docker swarm 部署docker镜像
 
+```
+stage('Swarm自动部署') {
+    agent any
+    steps {
+        sh 'echo Swarm自动部署...'
+        input id: 'Deploy2prod', message: '确定部署到生产环境？', ok: '部署', submitter: 'admin'
+        sh 'docker stack deploy -c docker-compose.yaml jenkins-deploy-example'
+    }
+}
+```
+
+## Docker镜像发布
+
+可以推送到本地Docker镜像仓库或者推送到DockerHub、阿里云等第三方镜像仓库。
+
+## 其他配置
+
+### 邮件通知
+
+开通自己邮箱的POP3和SMTP服务，生成邮箱帐号的授权码，Jenkins通过帐号和授权码请求邮箱服务接口发送邮件。
