@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-service
+spec:
+  selector:
+    app: whoami-pod
+  ports:
+    - name: wai-service-port
+      port: 8888
+      targetPort: 8000
+  #type: ClusterIP      # 只能通过K8S内网访问
+  type: NodePort        # service/whoami-service   NodePort    10.96.23.243   <none>        8888:30242/TCP   3h26m  # 暴露到K8S外网的30242端口（任意节点的外网IP+30242端口都可以访问）

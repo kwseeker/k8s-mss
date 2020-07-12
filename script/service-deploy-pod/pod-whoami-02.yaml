@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app: whoami-pod
+  name: whoami-pod-02
+spec:
+  containers:
+    - image: jwilder/whoami
+      name: whoami
+      ports:
+        - name: whoami-02-port
+          containerPort: 8000
