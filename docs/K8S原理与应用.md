@@ -347,11 +347,11 @@ spec:
   type: ClusterIP			#端口暴露到集群内部
 ```
 
-#### 应用暴露的三种方式
+#### 应用暴露（服务发现与负载）的三种方式
 
 + ClusterIP
 
-  这种方式通过访问Service集群IP和端口(或service名加端口)，可以负载均衡到Pod的IP和端口。
+  这种方式通过访问Service集群IP和端口(或service名加端口)，通过iptables规则，可以负载均衡到Pod的IP和端口。
 
   但是只是暴露到集群内部。外部无法访问。
 
@@ -359,23 +359,520 @@ spec:
 
   将端口同时暴露到集群外部。
 
+  内部还是通过ClusterIP:port访问；
+
+  外部通过NodeIP:port访问（只是多加了外部的接口映射，就像docker将端口映射到宿主机端口后，既可以通过docker内部虚拟IP加容器端口访问，也可以通过宿主机IP加映射的端口访问）。
+
 + LoadBalancer
 
   依靠第三方负载均衡策略。
 
-### 负载均衡与Pod调度
+另外两种拓展方式：
 
++ ExternalName
 
+  用于K8S内部服务访问外部服务（比如阿里云的某个云服务）。
+
++ ExternalIP
+
+  不同于NodePort会在每个Node节点上开外部端口，ExternalIP只会在指定的Node节点映射外部端口。
+
+### 命名空间
+
+用于实现应用资源隔离（但是网络不会隔离，通过网络可以相互访问）。
+
+在不同的命名空间可以拥有相同名字的Pod实例。
+
+不同的命名空间可以通过网络通信。
+
+指定在某个命名空间的操作只需要添加`-n <yourNamespace>`，如果要访问某命名空间资源通过`.<yourNamespace>`限定（如：whoami-service.<yourNamespace>）。
+
+默认操作都是在default命名空间，如果想在所有空间操作可以使用`-A`。
+
+>命名空间常用的场景：
+>
+>１）环境隔离：可以使用命名空间分别在dev\test\prod环境下各搭建一套完全相同的环境。
+>
+>２）产品线隔离：如针对不同产品线（Android\IOS\后端）进行隔离。
+>
+>３）基于团队隔离
+
+```shell
+# 创建命名空间（也可以通过yaml创建命名空间）
+kubectl create ns <newNamespace>
+# 删除命名空间,会删除这个命名空间下所有资源
+kubectl delete ns <newNamespace>
+# 命令行将某个资源分配到某个命名空间
+kubectl create deploy mydeploy --image=<imageName> --namespace=<myNamespace>
+# 获取命名空间的资源(如：pod)
+kubectl get pod -n <newNamespace>
+```
+
+通过yaml创建命名空间
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: <newNamespace>
+```
+
+修改Service/Deployment/Pod所属的命名空间
+
+```yaml
+metadata:
+  namespace: <newNamespace>
+```
+
+### 标签＆选择器
+
+标签用于分类和选择；选择器有多种选择策略从一堆资源中通过标签选中目标资源。
+
+选择器选择策略：
+
++ 等值判断
++ 集合in、notin、exists判断
+
+查看资源的标签（如：pod）
+
+```shell
+kubectl get pod --show-labels
+kubectl get pod -l app=whoami-pod	# 搜索app标签为whoami-pod的pod
+```
+
+#### 字段选择器
+
+可以通过yaml字段筛选k8s的资源。
+
+```shell
+kubectl get pod --field-selector metadata.labels.app=whoami-pod
+```
+
+### 注解
+
+用于定义元信息，类似Maven的<property>。　
+
+### 容器钩子和容器生命周期
+
+#### 容器生命周期
+
+待创建（Pending）-> 运行中（Running）-> 成功终止（Succeeded）／失败终止（Failed） ／未知（Unknown）
+
+#### 容器钩子
+
+Kubernetes中为容器提供了两个 hook（钩子函数）：
+
++ PostStart
+
+  此钩子函数在容器创建后将立刻执行。但是，并不能保证该钩子函数在容器的 `ENTRYPOINT` 之前执行。该钩子函数没有输入参数。
+
++ PreStop
+
+  此钩子函数在容器被 terminate（终止）之前执行，例如：
+
+  通过接口调用删除容器所在 Pod;
+
+  某些管理事件的发生：健康检查失败、资源紧缺等。
+
+  如果容器已经被关闭或者进入了 `completed` 状态，preStop 钩子函数的调用将失败。该函数的执行是同步的，即，kubernetes 将在该函数完成执行之后才删除容器。该钩子函数没有输入参数。
+
+### 多容器协作&SideCar
+
+SideCar用于处理和本职业务不相关的事务处理，如日志监控等。服务可以将日志数据交给SideCar与其他监控服务交互。这种方式类似代理，如MyCAT就是某个服务分库分表相关事务的代理（可以称MyCAT就是这个服务的SideCar）。还有一些中间件也可以称为服务的SideCar。
+
+### Init容器
+
+用于初始化pod, 一个pod可以拥有一个或多个Init容器，它们之间一个接一个地执行。执行完就退出。
+
+Init容器先于业务服务容器启动。如果Init容器执行失败k8s会不断重启该pod；除非设置restartPolicy为Never。
+
+### 探针机制
+
+用于探测容器执行状态。每次探测都会获取“成功”、“失败”、"未知"三种状态之一。
+
+三种处理程序：
+
++ ExecAction
++ TCPSocketAction
++ HttpGetAction
+
+三种探针：
+
++ 存活探针 livenessProbe
+
+  确定容器是否正在运行。如果健康检查失败，kubelete 将结束该容器，并根据 restart policy（重启策略）确定是否重启该容器。
+
++ 就绪探针 readinessProbe
+
+  确定容器是否已经就绪并接收服务请求。如果就绪检查失败，kubernetes 将该 Pod 的 IP 地址从所有匹配的 Service 的资源池中移除掉。
+
++ 启动探针 startupProbe
+
+使用探针机制可以实现如下功能：
+
+１）在容器的进程无响应后，将容器 kill 掉并重启。通过指定一个健康检查 liveness probe，并同时指定 restart policy（重启策略）为 Always 或者 OnFailure。
+
+２）等待Pod确实就绪之后才向其分发服务请求。通过指定一个就绪检查 readiness probe。
+
+### 滚动升级＆扩缩容
+
+#### ReplicaSet(RS) & ReplicationController(RC)
+
+RS是RC的升级版，支持复杂的选择器。通过explain查看配置项，对比差异。
+
+#### RS & Deployment
+
+Deployment是RS的升级版，RS只能做副本控制，通过explain查看配置项，对比差异。
+
+```shell
+# kubectl explain ReplicaSet.spec
+minReadySeconds	<integer> #最小就绪时间（就绪后可视为可用的时间）
+replicas <integer> 	#副本数量（容器全部实例数量）
+selector <Object>	#标签选择器
+template <Object>	#Pod创建模板
+
+# kubectl explain Deployment.spec
+minReadySeconds	<integer>
+paused	<boolean>	#用于滚动升级，显示deployment是否paused
+progressDeadlineSeconds	<integer>	#启动就绪限时
+replicas	<integer>
+revisionHistoryLimit	<integer>　	#最大记录版本数
+selector	<Object> -required-
+strategy	<Object>	#升级策略
+  rollingUpdate	<Object>	#滚动升级策略
+    maxSurge				#最大增量, 每次滚动升级的实例数量（默认每次１个）或百分比
+    maxUnavailable			#最大不可用量，当不可用实例数量超过这个值（整数或百分比）则停止升级
+  type	<string>			#策略类型　"Recreate" or "RollingUpdate"
+template	<Object> -required-
+```
+
+#### Horizontal Pod Autoscaler
+
+可以通过CPU利用率自动伸缩RC\RS\Deployment中的Pod数量。
+
+```shell
+kubectl explain hpa
+```
+
+监控需要安装监控工具：metrics-server
+
+#### 金丝雀部署(灰度发布)案例
+
+使用标签选择器和Pod多标签实现。
+
+#### StatefulSet
+
+用于有状态服务的部署。使用StatefulSet部署的Pod,即使重新被拉起，所有的状态（如：ip）都不变。
+
+**适用场景**：
+
+稳定、唯一的网络标识；
+
+每个Pod始终对应各自的存储路径；
+
+按顺序地增加副本较少副本，并在减少副本时执行清理；
+
+按顺序自动执行滚动更新。
+
+**yaml配置项**：
+
+```shell
+podManagementPolicy	<string>	#pod管理策略（OrderedReady／Parallel），默认是按顺序启动／关闭
+								#Parallel并行启动／删除
+replicas	<integer>
+revisionHistoryLimit	<integer>
+selector	<Object> -required-
+serviceName	<string> -required-	#管理此StatefulSet的service, 此StatefulSet的pod由该service
+template	<Object> -required-
+updateStrategy	<Object>
+volumeClaimTemplates	<[]Object>
+```
+
+```shell
+# 可以看到statefulset创建的pod不像之前那样后面添加两段随机码区分
+[root@k8smaster stateful]# watch -n 1 kubectl get pod -l app=stateful-tomcat -o wide
+NAME                READY   STATUS    RESTARTS   AGE     IP              NODE        NOMINATED NODE   READINESS GATES
+stateful-tomcat-0   1/1     Running   0          6m57s   10.244.249.79   k8snode01   <none>           <none>
+stateful-tomcat-1   1/1     Running   0          6m55s   10.244.32.135   k8snode02   <none>           <none>
+stateful-tomcat-2   1/1     Running   0          6m12s   10.244.249.80   k8snode01   <none>           <none>
+# 可以发现pod删除后会重新部署，pod名字不变，虽然IP会变
+# 访问方式
+curl stateful-tomcat-1.stateful-tomcat:8080
+```
+
+#### DaemonSet
+
+会在集群中每个Node节点都部署文件中定义的Pod。
+
+集群守护进程、日志收集、运行监控容器都可以通过这个将控制器部署。
+
+#### Job & CronJob
+
+为临时任务或定时任务创建Pod，执行完即退。注意CronJob是创建Job的，然后由Job创建Pod。
+
+Job程序必须确保是幂等的（因为CronJob在时间计划中的每个执行时刻在少数情况可能出现创建两个Job对象或不创建Job对象）。
 
 ### 存储技术
+
+![](../img/K8S-Volume.png)
+
+#### Secret
+
+用于存储用户名密码、认证证书等敏感信息, 是一种Volume机制。
+
+secret 类型：
+
+- docker-registry (访问docker仓库的密码，通过spec.imagePullSecrets加载)
+- generic  (可自定义 key / value)
+- tls （可存放 HTTPS 证书等）
+
+```shell
+kubectl create secret --help
+#Available Commands:
+#  docker-registry :docker仓库准备的秘钥
+#  generic         ：普通秘钥
+#  tls             ：tls
+#Usage:
+#  kubectl create secret [flags] [options]
+
+# 从文件创建Secret
+kubectl create secret generic mysql-secret --from-file=./username.txt --from-file=./password.txt
+# 从字符串创建
+kubectl create secret generic mysql-secret –from-literal=username=admin –from-literal=password=123456
+# 通过yaml文件创建，如使用下面 -o yaml 输出的yaml文件
+# 内容为了安全性不能写明文使用 echo -n 'admin' | base64 转base64编码
+
+# 修改secret
+kubectl edit secret mysql-secret
+
+kubectl get secret mysql-secret -o yaml
+
+apiVersion: v1
+data:
+  password.txt: MTIzNDU2
+  username.txt: YWRtaW4=
+kind: Secret
+metadata:
+  creationTimestamp: "2020-07-19T12:38:41Z"
+  name: db-user-passwd
+  namespace: default
+  resourceVersion: "636652"
+  selfLink: /api/v1/namespaces/default/secrets/db-user-passwd
+  uid: 06bd8f7e-689c-43c5-8a2b-481c843cb7cc
+type: Opaque	# 隐藏不显示
+```
+
+secret使用：
+
++ 通过环境变量的方式使用
+
+  ```shell
+  kubectl explain pod.spec.containers.env
+  
+  spec:
+    containers:
+      env:
+        - name: SECRET_USERNAME	# 环境变量的名字
+          valueFrom:				# 取值来源
+            secretKeyRef:			# 表示从secret取值
+              name: mysql-secret	# 
+              key: username.txt
+        - name: SECRET_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password.txt
+  ```
+
++ 通过volume的形式挂载到pod的某个目录
+
+  ```yaml
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: mypod-secret-2
+  spec:
+    containers:
+    - name: nginx
+      image: nginx
+      volumeMounts:
+      - name: foo
+        mountPath: "/etc/foo"	#容器内挂载路径
+        readOnly: true
+    volumes:
+    - name: foo
+      secret:
+        secretName: mysecret
+  ```
+
+#### ConfigMap
+
+用来挂载配置，对数据保密性要求不高，可以看到配置内容。
+
+ConfigMap类似微服务系统中的配置中心。可以实现热更新。
+
+> secret和ConfigMap的数据都是保存在Master节点的etcd集群中。
+>
+> 对比docker volume是将数据存储在宿主机，然后挂载到容器内部某目录。
+
+```shell
+# 查看ConfigMap
+kubectl get cm
+```
+
+创建ConfigMap
+
++ 通过命令行＋文件创建
++ 通过yaml配置创建
+
+引用ConfigMap
+
++ volumes 挂载（支持热更新[基于ApiServer的内容事件订阅机制实现]，常用方式）
++ 环境变量方式导入（不支持热更新）
+
+#### EmptyDir
+
+类似Docker的匿名卷；将容器内部的文件挂载到宿主机的临时目录。EmptyDir与Pod的生命周期一致。
+
+使用场景：
+
++ 临时存储（存储中间数据）
++ 容器共享存储（容器协同）
+
+#### HostPath
+
+将宿主机文件挂载到容器中。
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pd-hostpath
+spec:
+  containers:
+  - image: tomcat:7
+    name: test-container
+    
+    volumeMounts:
+    - mountPath: /test-pd
+      name: test-volume
+  volumes:
+  - name: test-volume
+    hostPath:
+      # directory location on host
+      path: /var/lib/docker
+      # this field is optional
+      type: Directory
+```
+
+特权容器。
+
+#### 持久化存储
+
+##### PV(persistentVolume)
+
+##### PVC(persistentVolumeClaim)
+
+### Ingress网络
+
+Ingress底层实现依赖Nginx, 工作在Service上层，为与哦嗯乎提供整个集群Service的路由访问。
+
+### Pod调度
+
+#### 调度原理
 
 
 
 ### 亲和、反亲和、安全管理
 
+#### 污点与容忍
+
+#### 权限认证
+
 
 
 ## 微服务实战
+
+### Helm
+
+![](../img/helm3_architecture.jpg)
+
+- k8s的包管理工具。可以使用helm快速的分享、构建k8s应用；
+- 对于使用者而言，使用helm以后不需要了解k8s的yaml语法并编写应用部署文件，可以通过helm下载并在k8s上安装应用
+- helm也提供了在k8s上软件部署、删除、升级、回滚应用的强大功能
+- helm的**软件包**称为**chart**，类似maven给我们会打包一个jar或者war一样
+- helm软件包地址: https://github.com/helm/charts/tree/master/stable
+
+#### 安装配置
+
+```shell
+# 安装Helm
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
+chmod 700 get_helm.sh
+./get_helm.sh
+# 添加Helm仓库源，helm从仓库检索东西
+helm repo add stable https://kubernetes.oss-cn-hangzhou.aliyuncs.com/charts
+helm repo add apphub https://apphub.aliyuncs.com
+helm repo update
+helm repo list
+# 使用
+helm search repo mysql
+helm show all apphub/mysql			#查看应用详情
+helm install mysql apphub/mysql
+helm list
+helm uninstall mysql
+# 查看所有相关创建的资源
+kubectl get all | grep mysql
+kubectl get pvc
+```
+
+#### 在Helm软件包基础上修改重新打包
+
+##### 命令行修改配置
+
+如果修改比较少，且经常变，可以直接通过命令行修改
+
+```shell
+#　查看命令行可以修改的配置
+helm install mysql apphub/mysql --help
+helm install mysql --set mysqlRootPassword=123456 stable/mysql
+```
+
+##### 修改配置文件重新制作软件包
+
+```shell
+# 首先下载软件包,并解压
+helm pull stable/mysql
+tar zxf mysql-0.3.5.tgz
+tree mysql
+```
+
+文件说明：
+
+```shell
+mysql
+├── Chart.yaml			# 软件包的描述文件
+├── README.md			
+├── templates			# 真正用于创建k8s各种资源的配置文件
+│   ├── configmap.yaml
+│   ├── deployment.yaml
+│   ├── _helpers.tpl
+│   ├── NOTES.txt
+│   ├── pvc.yaml
+│   ├── secrets.yaml
+│   └── svc.yaml
+└── values.yaml			# 软件配置文件（这里定义了mysql的用户名密码／mysql.cnf配置文件，k8s控制器／探针／持久化卷／硬件资源限制／等的配置）
+						# helm install mysql --set mysqlRootPassword=123456 stable/mysql 就是提取的values.yaml文件
+```
+
+修改values.yaml然后应用到helm app
+
+```shell
+helm install mysql -f values.yaml
+helm install mysql -f values.yaml ./	#如果其他文件也有修改，可以这样替换
+```
+
+
 
 
 
