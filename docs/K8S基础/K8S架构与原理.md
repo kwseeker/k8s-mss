@@ -157,13 +157,35 @@ Spring Cloud优缺
 
 #### 原生方式
 
-##### 1) 开发到Docker镜像构建
++ 项目开发、代码提交
 
-##### 2) 写API资源配置Yaml并应用
+  假设项目中有两个微服务一个是web服务，一个是基础服务，web服务通过http调用基础服务，基础服务操作MySQL进行数据读写。
 
-##### 3) 使用Helm安装其他拓展插件
+  １）代码实现
 
-##### 4) 后续配置
+  ２）写Dockerfile
+
+  ３）写部署服务的K8S yaml文件
+
+  
+
++ Jenkins自动编译打包，构建Docker镜像并推送到私有仓库
+
+  １）Jenkins、Gitlab、Harbor 部署到Node节点作为一个Pod
+
+  ２）配置Gitlab
+
+  ３）配置Jenkins监听项目变更，触发编译，Docker镜像构建并推送到Habor仓库
+
+  ４）配置Jenkins自动部署 （kubectl apply）
+
+##### 3) 确定服务发现策略等等
+
+##### 4) 写API资源配置Yaml并应用
+
+##### 5) 使用Helm安装其他依赖组件
+
+##### 6) 后续配置
 
 #### KubeSphere
 

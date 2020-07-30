@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: demo-project
+  labels:
+    app: tea-svc
+  name: tea-svc-u78qyi
+  annotations:
+    kubesphere.io/alias-name: 茶水点餐系统
+    kubesphere.io/minAvailablePod: '2'
+    kubesphere.io/maxSurgePod: '3'
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tea-svc
+  template:
+    metadata:
+      labels:
+        app: tea-svc
+      annotations:
+        kubesphere.io/containerSecrets: null
+    spec:
+      containers:
+        - name: container-55z4dq
+          type: worker
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: '0.01'
+              memory: 10Mi
+            limits:
+              cpu: '0.22'
+              memory: 500Mi
+          image: 'nginxdemos/hello:plain-text'
+          ports:
+            - name: tcp-80
+              protocol: TCP
+              containerPort: 80
+              servicePort: 80
+      serviceAccount: default
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: tea-svc
+                topologyKey: kubernetes.io/hostname
+      initContainers: []
+      imagePullSecrets: null
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 25%
+      maxSurge: 25%
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: demo-project
+  labels:
+    app: tea-svc
+  annotations:
+    kubesphere.io/serviceType: statelessservice
+    kubesphere.io/alias-name: 茶水点餐系统
+  name: tea-svc
+spec:
+  sessionAffinity: ClientIP
+  selector:
+    app: tea-svc
+  ports:
+    - name: tcp-80
+      protocol: TCP
+      port: 80
+      targetPort: 80
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+  type: NodePort
